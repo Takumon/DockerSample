@@ -1,8 +1,8 @@
 data-mysql:
   image: busybox:buildroot-2014.02
   volumes:
-    - .workspace:/var/lib/mysql
-    - .mysql:/docker-entrypoint-init.d
+    - ./workspace:/var/lib/mysql
+    - ./mysql:/docker-entrypoint-init.d
 mysql:
   image: mysql:5.6.28
   environment:
