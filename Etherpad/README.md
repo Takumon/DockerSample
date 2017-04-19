@@ -1,4 +1,4 @@
-.gitignore# Etherpad
+# Etherpad
 [Dockerで即実行できる、社内・自宅向けオープンソースWebアプリ](http://qiita.com/y_hokkey/items/406b5a8c4bc15354d069)を参考にして作成しました。
 
 ## 概要
