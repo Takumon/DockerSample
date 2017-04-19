@@ -1,0 +1,16 @@
+wekan:
+  image: mquandalle/wekan
+  links:
+    - wekandb
+  environment:
+    - MONGO_URL=mongodb://wekandb/wekan
+    - ROOT_URL=http://your_host_ip:your_expose_psort # ipはホストのIPアドレス、ポートはportsと合わせる
+  ports:
+    - your_expose_psort:80 # ポートはROOT_URLのポートと合わせる
+  restart: always
+wekandb:
+  image: mongo
+  volumes:
+    - ./data:/data/db
+    - ./configdb:/data/configdb
+  restart: always 
