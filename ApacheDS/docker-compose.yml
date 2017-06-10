@@ -1,0 +1,4 @@
+apacheds:
+  image: h3nrik/apacheds
+  ports:
+    - "389:10389"

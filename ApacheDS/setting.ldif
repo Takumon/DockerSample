@@ -1,0 +1,121 @@
+version: 1
+
+
+#----------------------------------
+# グループエントリ
+#
+# 総務部
+#   kosugi takuya
+#   hosugi miki
+# 人事部
+#   sonoda takuya
+#   sonoda miki
+# 開発部
+#   isida takuya
+#   isida miki
+# 技術部
+#   harada takuya
+#   harada miki
+# 秘書室
+#   saito takuya
+#   saito miki
+#----------------------------------
+dn: ou=Groups,dc=example,dc=com
+objectClass: organizationalUnit
+objectClass: top
+ou: Groups
+
+# 総務部
+dn: cn=Administration Department,ou=Groups,dc=example,dc=com
+cn: Administration Department
+objectClass: groupOfUniqueNames
+objectClass: top
+ou: Groups
+uniquemember: uid=kosugi takuya, ou=Users, dc=example,dc=com
+uniquemember: uid=hosugi miki, ou=Users, dc=example,dc=com
+
+# 人事部
+dn: cn=Personnel Affairs Department,ou=Groups,dc=example,dc=com
+cn: Personnel Affairs Department
+objectClass: groupOfUniqueNames
+objectClass: top
+ou: Groups
+uniquemember: uid=sonoda takuya, ou=Users, dc=example,dc=com
+uniquemember: uid=sonoda miki, ou=Users, dc=example,dc=com
+
+
+# 開発部
+dn: cn=Development Department,ou=Groups,dc=example,dc=com
+cn: Development Department
+objectClass: groupOfUniqueNames
+objectClass: top
+ou: Groups
+uniquemember: uid=isida takuya, ou=Users, dc=example,dc=com
+uniquemember: uid=isida miki, ou=Users, dc=example,dc=com
+
+# 技術部
+dn: cn=Engineering Department,ou=Groups,dc=example,dc=com
+cn: Engineering Department
+objectClass: groupOfUniqueNames
+objectClass: top
+ou: Groups
+uniquemember: uid=harada takuya, ou=Users, dc=example,dc=com
+uniquemember: uid=harada miki, ou=Users, dc=example,dc=com
+
+
+# 秘書室
+dn: cn=Secretarial Office,ou=Groups,dc=example,dc=com
+cn: Secretarial Office
+objectClass: groupOfUniqueNames
+objectClass: top
+ou: Groups
+uniquemember: uid=saito takuya, ou=Users, dc=example,dc=com
+uniquemember: uid=saito miki, ou=Users, dc=example,dc=com
+
+
+#----------------------------------
+# ユーザエントリ
+#----------------------------------
+dn: ou=Users,dc=example,dc=com
+objectClass: organizationalUnit
+objectClass: top
+ou: Users
+
+
+#
+dn: uid=inoue takuyo,ou=People,dc=example,dc=com
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: posixAccount
+objectClass: top
+uid: inoue takuya
+userpassword: inoue
+givenname: Anne-Louise
+cn: Anne-Louise Barnes
+telephonenumber: +1 408 555 9445
+sn: Barnes
+roomnumber: 2290
+homeDirectory: /home/abarnes
+mail: abarnes@example.com
+l: Santa Clara
+ou: Payroll
+ou: People
+uidNumber: 1119
+gidNumber: 1000
+
+
+dn: uid=test,ou=Users,dc=example,dc=com
+objectClass: organizationalPerson
+objectClass: person
+objectClass: extensibleObject
+objectClass: uidObject
+objectClass: inetOrgPerson
+objectClass: top
+cn: Test User
+givenName: Test
+sn: User
+uid: test
+mail: test@example.com
+ou: Users
+userpassword: test
