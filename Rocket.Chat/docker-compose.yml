@@ -1,0 +1,51 @@
+version: '2'
+
+services:
+  rocketchat:
+    image: rocketchat/rocket.chat:0.60.2
+    restart: unless-stopped
+    volumes:
+      - ./uploads:/app/uploads
+    environment:
+      - PORT=3001
+      - ROOT_URL=http://127.0.0.1:3001
+      - MONGO_URL=mongodb://mongo:27017/rocketchat
+      - Accounts_UseDNSDomainCheck=false
+      - TZ=Asia/Tokyo
+#       - HTTP_PROXY=http://proxy.domain.com
+#       - HTTPS_PROXY=http://proxy.domain.com
+    depends_on:
+      - mongo
+    ports:
+      - 3001:3001
+
+  mongo:
+    image: mongo:3.6.1
+    restart: unless-stopped
+    volumes:
+     - ./db:/data/db
+     - ./dump:/dump
+     - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=Asia/Tokyo
+    command: mongod --smallfiles --oplogSize 128
+
+  hubot:
+    image: rocketchat/hubot-rocketchat:v1.0.11
+    ports:
+      - 3002:8080
+    volumes:
+      - ./hubot/scripts:/home/hubot/scripts
+    environment:
+      - ROCKETCHAT_URL=rocketchat:3001
+      - ROCKETCHAT_ROOM=GENERAL
+      - ROCKETCHAT_ROOM=hubot
+      - ROCKETCHAT_USER=rocketchatbot
+      # パスワードを設定
+      - ROCKETCHAT_PASSWORD=XXXXXXX
+      - BOT_NAME=RocketchatBot
+      - _EXTERNALSCRIPTS=hubot-diagnostics,hubot-help,hubot-seen,hubot-links,hubot-greetings
+      - HUBOT_JENKINS_URL=http://127.0.0.1:10080
+      - HUBOT_JENKINS_AUTH=admin:admin
+    depends_on:
+      - rocketchat
