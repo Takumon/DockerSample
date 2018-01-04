@@ -8,12 +8,12 @@ services:
       - ./uploads:/app/uploads
     environment:
       - PORT=3001
-      - ROOT_URL=http://127.0.0.1:3001
+      - ROOT_URL=http://[Rocketchat IP-Address]:3001
       - MONGO_URL=mongodb://mongo:27017/rocketchat
       - Accounts_UseDNSDomainCheck=false
       - TZ=Asia/Tokyo
-#       - HTTP_PROXY=http://proxy.domain.com
-#       - HTTPS_PROXY=http://proxy.domain.com
+#       - HTTP_PROXY=http://id:password@proxy.domain.com
+#       - HTTPS_PROXY=http://id:password@proxy.domain.com
     depends_on:
       - mongo
     ports:
@@ -36,16 +36,23 @@ services:
       - 3002:8080
     volumes:
       - ./hubot/scripts:/home/hubot/scripts
+      - ./hubot/hubot-scripts.json:/home/hubot/hubot-scripts.json
+      - ./hubot/external-scripts.json:/home/hubot/external-scripts.json
+      - /etc/localtime:/etc/localtime:ro
     environment:
+      - TZ=Asia/Tokyo
       - ROCKETCHAT_URL=rocketchat:3001
       - ROCKETCHAT_ROOM=GENERAL
       - ROCKETCHAT_ROOM=hubot
       - ROCKETCHAT_USER=rocketchatbot
       # パスワードを設定
-      - ROCKETCHAT_PASSWORD=XXXXXXX
+      - ROCKETCHAT_PASSWORD=[rocketchat password]
       - BOT_NAME=RocketchatBot
       - _EXTERNALSCRIPTS=hubot-diagnostics,hubot-help,hubot-seen,hubot-links,hubot-greetings
-      - HUBOT_JENKINS_URL=http://127.0.0.1:10080
-      - HUBOT_JENKINS_AUTH=admin:admin
+      - HUBOT_JENKINS_URL=http://[jenkins IP-Address]:[Jenkins port]
+      - HUBOT_JENKINS_AUTH=[jenkins user]:[jenkins password]
+#       - HTTP_PROXY=http://id:password@proxy.domain.com
+#       - HTTPS_PROXY=http://id:password@proxy.domain.com
     depends_on:
       - rocketchat
+
