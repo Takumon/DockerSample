@@ -1,0 +1,4 @@
+proxy:
+  build: proxy
+  ports:
+    - "80:80"
