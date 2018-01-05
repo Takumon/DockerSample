@@ -1,7 +1,11 @@
 jenkins:
-  image: jenkins
+  image: jenkins:2.60.3
   ports:
-    - "8082:8080"
+    - "10080:8080"
     - "50000:50000"
   volumes:
     - ./data:/var/jenkins_home
+    - /etc/localtime:/etc/localtime:ro
+  environment:
+    - TZ=Asia/Tokyo
+    - JENKINS_OPTS=--prefix=/jenkins
