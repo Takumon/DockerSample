@@ -1,12 +1,11 @@
-data00gitbucket:
-  image: busybox:buildroot-2014.02
+gitbucket:
+  image: takezoe/gitbucket:4
+  ports:
+    - "8080:8080"
+    - "29418:29418"
   volumes:
     - ./data:/gitbucket
-gitbucket:
-  image: f99aq8ove/gitbucket
-  ports:
-    - "80:8080"
-    - "29418:29418"
-  volumes_from:
-    - data00gitbucket
-  command: java -jar /opt/gitbucket.war
+    - /etc/localtime:/etc/localtime:ro
+  environment:
+    - TZ=Asia/Tokyo
+  command: java -jar /opt/gitbucket.war --prefix=/gitbucket
