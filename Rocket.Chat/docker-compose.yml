@@ -48,7 +48,7 @@ services:
       - ROCKETCHAT_USER=bot
       - ROCKETCHAT_PASSWORD=bot
       - BOT_NAME=SampleBot
-      - EXTERNAL_SCRIPTS=hubot-diagnostics,hubot-help,hubot-seen,hubot-links,hubot-greetings,hubot-redis-brain,cheerio,request
+      - EXTERNAL_SCRIPTS=hubot-diagnostics,hubot-help,hubot-seen,hubot-links,hubot-greetings,hubot-redis-brain,querystring,cheerio,request
       # - HUBOT_JENKINS_URL=http://[jenkins IP-Address]:[Jenkins port]
       - HUBOT_JENKINS_URL=http://192.168.1.5:10080/jenkins/
       # - HUBOT_JENKINS_AUTH=[jenkins user]:[jenkins password]
