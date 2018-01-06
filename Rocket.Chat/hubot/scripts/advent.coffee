@@ -24,7 +24,6 @@ module.exports = (robot) ->
         url = "#{baseUrl}/calendars/#{calendar.id}"
         name = calendar.title
         calendars.push { url, name }
-        console.log "name = #{name}, url = #{url}"
 
 
       filtered = calendars.filter (c) ->
