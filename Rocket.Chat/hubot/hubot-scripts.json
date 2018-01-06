@@ -1,1 +1,4 @@
-["jenkins.coffee"]
+[
+  "jenkins.coffee",
+  "redis-brain.coffee"
+]
