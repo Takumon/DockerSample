@@ -31,7 +31,7 @@ module.exports = (robot) ->
       return
 
     currentName = robot.brain.get REDIS_KEY_OF_CURRENT_SHIFT_NAME
-    currentIndex = shiftNameList.indexOf(currentName)
+    currentIndex = shiftNameList.indexOf currentName
 
     if currentIndex == -1
       robot.brain.set REDIS_KEY_OF_CURRENT_SHIFT_NAME, shiftNameList[0]
@@ -48,19 +48,17 @@ module.exports = (robot) ->
 
   # 次の人に当番を割り当てる
   robot.respond /s(?:hift)? next/i, (msg) ->
-    console.log(robot.brain.get REDIS_KEY_OF_CURRENT_SHIFT_NAME)
 
-    if not robot.brain.get REDIS_KEY_OF_CURRENT_SHIFT_NAME
-      robot.brain.set REDIS_KEY_OF_CURRENT_SHIFT_NAME, shiftNameList[0]
-      msg.send　"次の当番に#{shiftNameList[0]}を割り当てました。"
+    if not robot.brain.get(REDIS_KEY_OF_CURRENT_SHIFT_NAME)
+      robot.brain.set(REDIS_KEY_OF_CURRENT_SHIFT_NAME, shiftNameList[0])
+      msg.send("次の当番に#{shiftNameList[0]}を割り当てました。")
       return
 
-    currentName = robot.brain.get REDIS_KEY_OF_CURRENT_SHIFT_NAME
+    currentName = robot.brain.get(REDIS_KEY_OF_CURRENT_SHIFT_NAME)
     currentIndex = shiftNameList.indexOf(currentName)
     nextIndex = currentIndex + 1
-    console.log "nextIndex = #{nextIndex}"
     # 現在の担当が最後の人だったら最初に戻す
     nextIndex = nextIndex % shiftNameList.length
-    robot.brain.set REDIS_KEY_OF_CURRENT_SHIFT_NAME, shiftNameList[nextIndex]
+    robot.brain.set(REDIS_KEY_OF_CURRENT_SHIFT_NAME, shiftNameList[nextIndex])
 
-    msg.send　"次の当番に#{shiftNameList[nextIndex]}を割り当てました。"
+    msg.send("次の当番に#{shiftNameList[nextIndex]}を割り当てました。")
