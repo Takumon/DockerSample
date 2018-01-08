@@ -93,7 +93,7 @@ function postCapture(msg, base64Image) {
 }
 
 module.exports = (robot) => {
-  robot.respond(/capture(?: (\S+))?/i, msg => {
+  robot.respond(/page capture(?: (\S+))?/i, msg => {
     const url = msg.match[1];
 
     getCapture(url).then(imageBase64 => {

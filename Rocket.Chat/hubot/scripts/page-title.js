@@ -29,7 +29,7 @@ const getTitle = async url => {
 };
 
 module.exports = (robot) => {
-  robot.respond(/puppeteer(?: (\S+))?/i, msg => {
+  robot.respond(/page title (?: (\S+))?/i, msg => {
     const url = msg.match[1];
 
     getTitle(url).then(title => {
