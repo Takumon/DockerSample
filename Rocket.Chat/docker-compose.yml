@@ -24,7 +24,6 @@ services:
     volumes:
      - ./mongodb/data:/data/db
      - ./mongodb/dump:/dump
-     - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Asia/Tokyo
     command: mongod --smallfiles --oplogSize 128
@@ -38,7 +37,6 @@ services:
     volumes:
       - ./hubot/scripts:/home/hubot/scripts
       - ./hubot/hubot-scripts.json:/home/hubot/hubot-scripts.json
-      - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Asia/Tokyo
       - ROCKETCHAT_URL=rocketchat:3001
@@ -46,7 +44,7 @@ services:
       - ROCKETCHAT_USER=bot
       - ROCKETCHAT_PASSWORD=bot
       - BOT_NAME=bot
-      - EXTERNAL_SCRIPTS=hubot-diagnostics,hubot-help,hubot-seen,hubot-links,hubot-greetings,cheerio,request,hubot-redis-brain
+      - EXTERNAL_SCRIPTS=hubot-diagnostics,hubot-help,hubot-seen,hubot-links,hubot-greetings,cheerio,request,request-promise,hubot-redis-brain
       # - HUBOT_JENKINS_URL=http://[jenkins IP-Address]:[Jenkins port]
       - HUBOT_JENKINS_URL=http://192.168.1.5:10080/jenkins/
       # - HUBOT_JENKINS_AUTH=[jenkins user]:[jenkins password]
