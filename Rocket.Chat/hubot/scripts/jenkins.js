@@ -110,14 +110,34 @@ const formatCommentFormMarkdown = results => {
 const gitbucketRool = 'http://jenkins:jenkins@192.168.1.5:8080/gitbucket';
 
 /**
+ * 指定したプルリクのブランチを取得する
+ *
+ * @param {*} owner
+ * @param {*} repository
+ * @param {*} pullRequestNumber
+ */
+const getPullRequestBranch = (owner, repository, pullRequestNumber) => {
+  const url = `${gitbucketRool}/api/v3/repos/${owner}/${repository}/pulls/${pullRequestNumber}`;
+
+  return rp({
+    method: 'GET',
+    uri: url,
+    json: true
+  })
+  .then( res => res.head.ref);
+}
+
+
+
+/**
  * 指定したGitBucketのプルリクにコメントを追加する
  * @param {*} owner
  * @param {*} repository
- * @param {*} pullrequestNumber
+ * @param {*} pullRequestNumber
  * @param {*} commentText
  */
-const addCommentToPullrequest = (owner, repository, pullrequestNumber, commentText) => {
-  const url = `${gitbucketRool}/api/v3/repos/${owner}/${repository}/issues/${pullrequestNumber}/comments`;
+const addCommentToPullrequest = (owner, repository, pullRequestNumber, commentText) => {
+  const url = `${gitbucketRool}/api/v3/repos/${owner}/${repository}/issues/${pullRequestNumber}/comments`;
 
   rp({
     method: 'POST',
@@ -126,31 +146,44 @@ const addCommentToPullrequest = (owner, repository, pullrequestNumber, commentTe
       body: commentText
     },
     json: true
-  }).then( res => {
-    console.log('処理成功');
-  }).catch(err => {
-    console.log(err);
   });
 };
 
+
+
 module.exports = (robot) => {
-  robot.router.post('/hubot/gitbucket/check-jenkins', (req, res) => {
-    if (req.body.comment.body.startsWith('Jenkins?') === false) {
-      res.end('Out of target.');
+  robot.router.post('/hubot/gitbucket/check-jenkins', (req, response) => {
+    if (!req.body.comment
+      || !req.body.comment.body
+      || !req.body.issue
+      || !req.body.issue.number) {
+      response.end('Out of target.');
+      return;
+    }
+
+    if(req.body.comment.body !== 'Jenkins?') {
+      response.end('Out of target.');
       return;
     }
 
     const owner = req.body.repository.full_name.split('/')[0];
     const repository = req.body.repository.full_name.split('/')[1];
 
-    const branch = req.body.comment.body.substring(8);
-    const pullrequestNumber = req.body.issue.number;
-    getJenkinsBuildResult(repository, branch)
+    const pullRequestNumber = req.body.issue.number;
+
+    getPullRequestBranch(owner, repository, pullRequestNumber)
+    .then(branch => getJenkinsBuildResult(repository, branch))
     .then(results => {
       const formatted = formatCommentFormMarkdown(results);
-      addCommentToPullrequest(owner, repository, pullrequestNumber, formatted);
+      return addCommentToPullrequest(owner, repository, pullRequestNumber, formatted);
+    })
+    .then(res => {
+      console.log('処理成功');
+      response.end('OK');
+    })
+    .catch(err => {
+      console.log('処理失敗 ' + err);
+      response.end('NG ' + err);
     });
-
-    res.end('OK');
   });
 };
