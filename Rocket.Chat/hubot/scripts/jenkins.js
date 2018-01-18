@@ -1,7 +1,15 @@
 const rp = require('request-promise');
 
+// 前提条件
+// ★Jenkinsのジョブ名はリポジトリ名と一致すること（これは本処理の実装上のしばり）
+// GitBucketのリポジトリはjunitのテスト、CheckStyle、Findbugs、PMDをJenkinsfileで実行するようになっていること
+// GitBucketのリポジトリのメンバーにgitbucketRoolで指定してるユーザが追加されていること
+// GitBucketのリポジトリのWebhookとして本エンドポイントがissue commentで設定されていること
+// jenkinsUrlに指定しているユーザでhenkinsにログインできること
 // TODO 定数化
 const jenkinsUrl = 'http://admin:admin@192.168.1.5:10080/jenkins';
+const gitbucketRool = 'http://jenkins:jenkins@192.168.1.5:8080/gitbucket';
+const roomName = 'hubot';
 
 /**
  * Multi Branch Pipeline JOBの最新ビルド結果を取得する
@@ -84,7 +92,7 @@ const formatCommentFormMarkdown = results => {
 
 
   let formatted = [];
-  formatted.push(`### [Jenkins最新ビルド結果](${buildResult.link})`);
+  formatted.push(`#### [Jenkins最新ビルド結果](${buildResult.link})`);
   formatted.push(`**ステータス**`);
   formatted.push(`\`${buildResult.result}\``);
   formatted.push(``);
@@ -103,11 +111,6 @@ const formatCommentFormMarkdown = results => {
   return formatted.join('\n');
 };
 
-
-
-
-// TODO 定数化
-const gitbucketRool = 'http://jenkins:jenkins@192.168.1.5:8080/gitbucket';
 
 /**
  * 指定したプルリクのブランチを取得する
@@ -150,6 +153,21 @@ const addCommentToPullrequest = (owner, repository, pullRequestNumber, commentTe
 };
 
 
+/**
+ * 指定したコメントをボットに呟く
+ *
+ * @param {*} robot
+ * @param {*} comment
+ */
+const addCommentToChat = (robot, comment) => {
+  const envelope = {}
+  envelope.user = {}
+  envelope.user.room = envelope.room = roomName;
+  envelope.user.type = 'groupchat'
+
+  robot.send(envelope, comment);
+}
+
 
 module.exports = (robot) => {
   robot.router.post('/hubot/gitbucket/check-jenkins', (req, response) => {
@@ -157,24 +175,34 @@ module.exports = (robot) => {
       || !req.body.comment.body
       || !req.body.issue
       || !req.body.issue.number) {
-      response.end('Out of target.');
+
+        console.log('処理対象外コメントです。')
+        response.end('Out of target.');
       return;
     }
 
+    console.log('req.body.comment.body=' +  req.body.comment.body)
     if(req.body.comment.body !== 'Jenkins?') {
+      console.log('処理対象外コメントです。')
       response.end('Out of target.');
       return;
     }
 
+    console.log('処理対象のコメントです。')
     const owner = req.body.repository.full_name.split('/')[0];
     const repository = req.body.repository.full_name.split('/')[1];
 
     const pullRequestNumber = req.body.issue.number;
 
     getPullRequestBranch(owner, repository, pullRequestNumber)
-    .then(branch => getJenkinsBuildResult(repository, branch))
+    .then(branch => {
+      return getJenkinsBuildResult(repository, branch)
+    })
     .then(results => {
       const formatted = formatCommentFormMarkdown(results);
+
+      // ボットに呟く場合はコメントアウト
+      // addCommentToChat(robot, formatted);
       return addCommentToPullrequest(owner, repository, pullRequestNumber, formatted);
     })
     .then(res => {
