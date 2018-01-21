@@ -6,7 +6,7 @@
 //
 // Configuration:
 //   1. GitBucketでWebhookをJSON形式のissue commentとして設定
-//   2. Wekanにボードを作成しレビュアーとレビュイーのリストとCloseリストを作成
+//   2. Wekanにボードを作成しレビュアーとレビュイーのリストとClosedリストを作成
 //
 // Commands:
 //   None
@@ -48,6 +48,7 @@ const GITBUCKET = {
 
 
 // GitBucketのリポジトリ名とWekanのボード名
+const WEKAN_CLOSE_LIST_NAME = 'Closed';
 const WEKAN_INFO = {
   'SampleGroup/SampleProject': {
     boardName: 'レビューステータス_sample-project',
@@ -191,6 +192,38 @@ function createRevisionRequestComment({
   return formatted.join('\n');
 }
 
+/**
+ * 指定された引数をもとにレビュー完了文を作成する
+ *
+ * @param {Object} param
+ * @param {string} param.repositoryFullName リポジトリのOwner/repository形式の名前
+ * @param {string} param.repositoryLink リポジトリへのリング
+ * @param {string} param.reviewerNickName レビュー依頼した人の通称
+ * @param {string} param.revieweeNickName レビューする人の通称
+ * @param {string} param.pullRequestNumber プルリク番号
+ * @param {string} param.pullRequestLink プルリクへのリンク
+ * @param {string} param.comment コメント
+ */
+function createReviewCompletionComment({
+  repositoryFullName,
+  repositoryLink,
+  reviewerNickName,
+  revieweeNickName,
+  pullRequestNumber,
+  pullRequestLink,
+  comment}) {
+
+  let formatted = [];
+  formatted.push(`#### レビュー完了`);
+  formatted.push(`リポジトリ: [${repositoryFullName}](${repositoryLink})`);
+  formatted.push(`プルリク: [${pullRequestNumber}](${pullRequestLink})`);
+  formatted.push(`レビュイー: \`${revieweeNickName}\``);
+  formatted.push(`レビュアー: \`${reviewerNickName}\``);
+  formatted.push(`##### コメント`);
+  formatted.push(`${comment}`);
+
+  return formatted.join('\n');
+}
 
 
 /**
@@ -509,7 +542,7 @@ async function returnCardToReviewee({
       return;
     }
     const cardId = reviewerCards.filter(c => c.title.indexOf(pullRequestTitle) !== -1)[0]._id;
-    // レビュイーの情報を取得
+    // レビュアーの情報を取得
     const reviewerName = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0].wekanUserName;
     const reviewerId = users.filter(u => u.username === reviewerName)[0]._id;
 
@@ -526,7 +559,7 @@ async function returnCardToReviewee({
     }
     const revieweelistId = lists.filter(b => b.title === revieweelistTitle)[0]._id;
 
-    // カード登録
+    // カード更新
     await updateCard({
       token,
       boardId,
@@ -535,6 +568,112 @@ async function returnCardToReviewee({
     }, {
       listId: revieweelistId,
       title: `レビュー修正:\`${pullRequestTitle}\``
+    });
+
+    // カードにコメント追加
+    await createCardComment({
+      token,
+      boardId,
+      cardId,
+      authorId: reviewerId,
+      comment: botComment});
+
+    logger.debug('コメント登録成功');
+
+  } catch (err) {
+    logger.error('コメント登録失敗');
+    logger.error(err);
+  }
+}
+
+
+
+
+/**
+ * Wekanで（レビュー完了）チケットをCloseリストに移動.
+ *
+ * @param {Object} param
+ * @param {string} param.repositoryFullName 所有者または所有グループも含めたリポジトリ名
+ * @param {tring} param.reviewerNickName レビュアーの通称
+ * @param {tring} param.revieweeNickName レビュイーの通称
+ * @param {tring} param.pullRequestTitle プルリクエストのタイトル
+ * @param {tring} param.botComment Botで呟く用のコメント
+ */
+async function moveCardToClose({
+  repositoryFullName,
+  reviewerNickName,
+  revieweeNickName,
+  pullRequestTitle,
+  botComment}) {
+
+  const wekanInfo = WEKAN_INFO[repositoryFullName];
+  const boardName = wekanInfo.boardName;
+
+  try {
+
+    // ログイン
+    const {id: userId, token} = await loginToWekanAndGetToken(wekanInfo.admin.id, wekanInfo.admin.pass);
+
+    // ユーザ取得
+    const users = await getUsers(token);
+
+    // ボード取得
+    const boards = await getBoards(token, userId);
+
+    // ボードの存在チェック
+    if (boards.length === 0
+      || boards.filter(b => b.title === boardName).length === 0) {
+      logger.error(`ボード[${boardName}]が存在しません。`);
+      return;
+    }
+    const boardId = boards.filter(b => b.title === boardName)[0]._id;
+
+    // リスト取得
+    const lists = await getLists(token, boardId);
+
+    // レビュアーリストの存在チェック
+    const reviewerlistTitle = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0].wekanListName;
+    if (lists.length === 0
+      || lists.filter(b => b.title === reviewerlistTitle).length === 0) {
+      logger.error(`ボード[${boardName}]にリスト[${reviewerlistTitle}]が存在しません。`);
+      return;
+    }
+    const reviewerlistId = lists.filter(b => b.title === reviewerlistTitle)[0]._id;
+
+
+    // レビュアーリストのカード取得
+    const reviewerCards = await getCards(token, boardId, reviewerlistId);
+    if (reviewerCards.length === 0
+      || reviewerCards.filter(c => c.title.indexOf(pullRequestTitle) !== -1).length === 0) {
+      logger.error(`ボード[${boardName}]のリスト[${reviewerlistTitle}]にタイトルに${pullRequestTitle}を含むカードが存在しません。`);
+      return;
+    }
+    const cardId = reviewerCards.filter(c => c.title.indexOf(pullRequestTitle) !== -1)[0]._id;
+    // レビュアーの情報を取得
+    const reviewerName = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0].wekanUserName;
+    const reviewerId = users.filter(u => u.username === reviewerName)[0]._id;
+
+
+    // 検索したカードをレビュアーのリストからレビュイーのリストに写すため
+    // レビュイーのリストの情報を取得する
+
+    // レビュイーリストの存在チェック
+    if (lists.length === 0
+      || lists.filter(b => b.title === WEKAN_CLOSE_LIST_NAME).length === 0) {
+      logger.error(`ボード[${boardName}]にリスト[${WEKAN_CLOSE_LIST_NAME}]が存在しません。`);
+      return;
+    }
+    const closelistId = lists.filter(b => b.title === WEKAN_CLOSE_LIST_NAME)[0]._id;
+
+    // カード登録
+    await updateCard({
+      token,
+      boardId,
+      listId: reviewerlistId,
+      cardId
+    }, {
+      listId: closelistId,
+      title: `\`${pullRequestTitle}\``
     });
 
     // カードにコメント追加
@@ -627,37 +766,73 @@ module.exports = (robot) => {
         botComment
       });
       response.end('OK');
+
     } else if (REVISION_REQIEST_COMMENT_PATTERN.test(comment)) {
       logger.info('処理対象のコメント：レビュー修正依頼');
-        // コメントに正しくレビュイー（レビュー修正する人）の通称を指定しているかチェック
-        const revieweeNickName = comment.match(REVISION_REQIEST_COMMENT_PATTERN)[1];
-        if (wekanInfo.member.filter(m => m.gitbucketNickName === revieweeNickName).length === 0) {
-          logger.error('レビュイーの指定(' + revieweeNickName + ')が正しくありません。レビュイーには' + wekanInfo.member.map(m => m.gitbucketNickName) + 'のいずれかを指定してください');
-          response.end('NG');
-          return;
-        }
 
-        const reviewerNickName = wekanInfo.member.filter(m => m.gitbucketUserName === commenter)[0].gitbucketNickName;
+      // コメントに正しくレビュイー（レビュー修正する人）の通称を指定しているかチェック
+      const revieweeNickName = comment.match(REVISION_REQIEST_COMMENT_PATTERN)[1];
+      if (wekanInfo.member.filter(m => m.gitbucketNickName === revieweeNickName).length === 0) {
+        logger.error('レビュイーの指定(' + revieweeNickName + ')が正しくありません。レビュイーには' + wekanInfo.member.map(m => m.gitbucketNickName) + 'のいずれかを指定してください');
+        response.end('NG');
+        return;
+      }
 
-        const botComment = createRevisionRequestComment({
-          repositoryFullName,
-          repositoryLink,
-          reviewerNickName,
-          revieweeNickName,
-          pullRequestNumber,
-          pullRequestLink,
-          comment
-        });
-        addCommentToChat(robot, botComment);
+      const reviewerNickName = wekanInfo.member.filter(m => m.gitbucketUserName === commenter)[0].gitbucketNickName;
 
-        returnCardToReviewee({
-          repositoryFullName,
-          reviewerNickName,
-          revieweeNickName,
-          pullRequestTitle,
-          botComment
-        });
-        response.end('OK');
+      const botComment = createRevisionRequestComment({
+        repositoryFullName,
+        repositoryLink,
+        reviewerNickName,
+        revieweeNickName,
+        pullRequestNumber,
+        pullRequestLink,
+        comment
+      });
+      addCommentToChat(robot, botComment);
+
+      returnCardToReviewee({
+        repositoryFullName,
+        reviewerNickName,
+        revieweeNickName,
+        pullRequestTitle,
+        botComment
+      });
+      response.end('OK');
+
+    } else if (REVIEW_COMPLETION_COMMENT_PATTERN.test(comment)) {
+      logger.info('処理対象のコメント：レビュー完了');
+
+      // コメントに正しくレビュイー（レビュー修正する人）の通称を指定しているかチェック
+      const revieweeNickName = comment.match(REVIEW_COMPLETION_COMMENT_PATTERN)[1];
+      if (wekanInfo.member.filter(m => m.gitbucketNickName === revieweeNickName).length === 0) {
+        logger.error('レビュイーの指定(' + revieweeNickName + ')が正しくありません。レビュイーには' + wekanInfo.member.map(m => m.gitbucketNickName) + 'のいずれかを指定してください');
+        response.end('NG');
+        return;
+      }
+
+      const reviewerNickName = wekanInfo.member.filter(m => m.gitbucketUserName === commenter)[0].gitbucketNickName;
+
+      const botComment = createReviewCompletionComment({
+        repositoryFullName,
+        repositoryLink,
+        reviewerNickName,
+        revieweeNickName,
+        pullRequestNumber,
+        pullRequestLink,
+        comment
+      });
+      addCommentToChat(robot, botComment);
+
+      moveCardToClose({
+        repositoryFullName,
+        reviewerNickName,
+        revieweeNickName,
+        pullRequestTitle,
+        botComment
+      });
+      response.end('OK');
+
     } else {
       logger.info('処理対象外コメントです。');
       response.end('Out of target.');
