@@ -1,33 +1,54 @@
+// Description:
+//   GitBucketでレビュー関連のコメントをした時にBotに呟く、またWekanにタスクを登録する。
+//
+// Dependencies:
+//   "request-promise"
+//
+// Configuration:
+//   1. GitBucketでWebhookをJSON形式のissue commentとして設定
+//   2. Wekanにボードを作成しレビュアーとレビュイーのリストとCloseリストを作成
+//
+// Commands:
+//   None
+//
+// URLs:
+//   POST /hubot/gitbucket/manage-review-task
 const rp = require('request-promise');
-// 縛り
-// wekanにあらかじめボードのみつくっておく
-// ボードはパブリック
-// タイトルが通称のリストを作成も作っておく（プログラムで作っってもいいが、タイポの時にリストが謝って作成されてしまうのを防ぐため、リストは事前に作成してもらうようにする）
-// タイトルがcloseのリストを作成
+const Log = require('log');
+const logger = new Log(process.env.HUBOT_LOG_LEVEL || 'info');
 
-const roomName = 'hubot';
 
+/** Botで呟く時のチャンネルの名前 */
+const BOT_ROOM_NAME = 'hubot';
+
+/** Wekanの情報 */
 const WEKAN = {
   protocol: 'http',
-  host: '10.74.71.31',
+  host: '192.168.1.5',
   port: '10085',
+  get rootUrl() {
+    return `${WEKAN.protocol}://${WEKAN.host}:${WEKAN.port}`;
+  }
 };
 
-const WEKAN_ROOT_URL = `${WEKAN.protocol}://${WEKAN.host}:${WEKAN.port}`;
 
+/** GitBucketの情報 */
 const GITBUCKET = {
   protocol: 'http',
   commentUserName: 'jenkins',
   commentUserPassword: 'jenkins',
-  host: '10.74.71.31',
+  host: '192.168.1.5',
   port: '8080',
-  prefix: 'gitbucket'
+  prefix: 'gitbucket',
+
+  get rootUrl() {
+    return `${GITBUCKET.protocol}://${GITBUCKET.commentUserName}:${GITBUCKET.commentUserPassword}@${GITBUCKET.host}:${GITBUCKET.port}/${GITBUCKET.prefix}`;
+  }
 };
 
-const GITBUCKET_ROOT_URL = `${GITBUCKET.protocol}://${GITBUCKET.commentUserName}:${GITBUCKET.commentUserPassword}@${GITBUCKET.host}:${GITBUCKET.port}/${GITBUCKET.prefix}`;
 
 // GitBucketのリポジトリ名とWekanのボード名
-WEKAN_INFO = {
+const WEKAN_INFO = {
   'SampleGroup/SampleProject': {
     boardName: 'レビューステータス_sample-project',
     admin: {
@@ -60,42 +81,42 @@ WEKAN_INFO = {
 
 
 
-// 新規レビュー依頼
-// チケット新規起票 XXXさんのところに
-// 起票者　コメントした人
-// タイトルはプルリク名
-// ラベル「レビュー」
-// コメント（GitBucketのコメントそのまま）
-// リンクはる
+/** コメントパターン：新規レビュー依頼 */
 const REVIEW_REQUEST_COMMENT_PATTERN = /^(.+)さんレビューお願いします/;
 
-// レビュー完了（指摘あり 要レビュー修正）
-// チケット移動（コメントした人から　XXXさん）
+// コメントパターン：レビュー修正依頼
+// チケット移動（コメントした人からXXXさん）
 // ラベル変更（（「レビュー）」→「（レビュー修正）」）
-// コメント追加（GitBucketのコメントそのまま　 コメント起票者 コメントした人）
+// コメント追加（GitBucketのコメントそのまま,コメント起票者 コメントした人）
+
+/** コメントパターン：レビュー修正依頼 */
 const REVISION_REQIEST_COMMENT_PATTERN = /^(.+)さんレビューしました/;
 
 // 再レビュー依頼
 // チケット移動（コメントした人から、XXXさん）
 // ラベル変更（「（レビュー修正）」→「（レビュー）」）
-// コメント追加（GitBucketのコメントそのまま　コメント起票者　コメントした人）
+// コメント追加（GitBucketのコメントそのままコメント起票者コメントした人）
+
+/** コメントパターン：再レビュー依頼 */
 const RE_REVIEW_RREQUEST_COMMENT_PATTERN = /^(.+)さん再度レビューお願いします/;
 
 // レビュー完了（指摘なし）
-// チケット移動（コメントした人から　CLOSEリスト）
-// コメント追加（GitBucketのコメントそのまま　 コメント起票者 コメントした人）
+// チケット移動（コメントした人からCLOSEリスト）
+// コメント追加（GitBucketのコメントそのままコメント起票者 コメントした人）
+
+/** コメントパターン：レビュー完了 */
 const REVIEW_COMPLETION_COMMENT_PATTERN = /^(.+)さんレビュー完了です/;
 
 
 /**
  * 指定したプルリクのブランチを取得する
  *
- * @param {*} owner
- * @param {*} repository
- * @param {*} pullRequestNumber
+ * @param {string} owner リポジトリの所有者または所有グループ
+ * @param {string} repository リポジトリ名
+ * @param {string} pullRequestNumber プルリク番号
  */
-const getPullRequestBranch = (owner, repository, pullRequestNumber) => {
-  const url = `${gitbucketRool}/api/v3/repos/${owner}/${repository}/pulls/${pullRequestNumber}`;
+function getPullRequestBranch(owner, repository, pullRequestNumber) {
+  const url = `${GITBUCKET.rootUrl}/api/v3/repos/${owner}/${repository}/pulls/${pullRequestNumber}`;
 
   return rp({
     method: 'GET',
@@ -109,15 +130,23 @@ const getPullRequestBranch = (owner, repository, pullRequestNumber) => {
 /**
  * 指定された引数をもとにレビュー依頼文を作成する
  *
- * @param {*} repositoryFullName
- * @param {*} repositoryLink
- * @param {*} reviewerNickName
- * @param {*} revieweeNickName
- * @param {*} pullRequestNumber
- * @param {*} pullRequestLink
- * @param {*} comment
+ * @param {Object} param
+ * @param {string} param.repositoryFullName リポジトリのOwner/repository形式の名前
+ * @param {string} param.repositoryLink リポジトリへのリング
+ * @param {string} param.reviewerNickName レビュー依頼した人の通称
+ * @param {string} param.revieweeNickName レビューする人の通称
+ * @param {string} param.pullRequestNumber プルリク番号
+ * @param {string} param.pullRequestLink プルリクへのリンク
+ * @param {string} param.comment コメント
  */
-const createBotComment = (repositoryFullName, repositoryLink, reviewerNickName, revieweeNickName, pullRequestNumber, pullRequestLink, comment) => {
+function createBotComment({
+  repositoryFullName,
+  repositoryLink,
+  reviewerNickName,
+  revieweeNickName,
+  pullRequestNumber,
+  pullRequestLink,
+  comment}) {
 
   let formatted = [];
   formatted.push(`#### レビュー依頼`);
@@ -128,27 +157,34 @@ const createBotComment = (repositoryFullName, repositoryLink, reviewerNickName, 
   formatted.push(`${comment}`);
 
   return formatted.join('\n');
-};
+}
 
 
 
-
-const loginToWekanAndGetToken = (wekanInfo) => {
-  const loginUrl = `${WEKAN_ROOT_URL}/users/login`
+/**
+ * wekanにログインしてトークンを取得する.
+ *
+ * @param {*} username wekanのユーザ名
+ * @param {*} password wekanのパスワード
+ */
+function loginToWekanAndGetToken(username, password) {
+  const loginUrl = `${WEKAN.rootUrl}/users/login`;
 
   return rp({
     uri: loginUrl,
     method: 'POST',
-    body: {
-      username: wekanInfo.admin.id,
-      password: wekanInfo.admin.pass
-    },
+    body: { username, password },
     json: true
   });
 }
 
-const getUsers = (wekanInfo, token) => {
-  const url = `${WEKAN_ROOT_URL}/api/users`
+/**
+ * wekanのユーザ一覧を取得する.
+ *
+ * @param {string} token wekanのトークン
+ */
+function getUsers(token) {
+  const url = `${WEKAN.rootUrl}/api/users`;
 
   return rp({
     uri: url,
@@ -160,8 +196,14 @@ const getUsers = (wekanInfo, token) => {
   });
 }
 
-const getBoards = (wekanInfo, userId, token) => {
-  const url = `${WEKAN_ROOT_URL}/api/users/${userId}/boards`
+/**
+ * 指定したユーザに紐づくボードを取得する.
+ *
+ * @param {string} token wekanのトークン
+ * @param {string} userId ユーザID
+ */
+function getBoards(token, userId) {
+  const url = `${WEKAN.rootUrl}/api/users/${userId}/boards`;
 
   return rp({
     uri: url,
@@ -173,8 +215,14 @@ const getBoards = (wekanInfo, userId, token) => {
   });
 }
 
-const getLists = (wekanInfo, token, boardId) => {
-  const url = `${WEKAN_ROOT_URL}/api/boards/${boardId}/lists`
+/**
+ * 指定したボードに紐づくリストを取得する.
+ *
+ * @param {string} token トークン
+ * @param {string} boardId ボードID
+ */
+function getLists(token, boardId) {
+  const url = `${WEKAN.rootUrl}/api/boards/${boardId}/lists`;
 
   return rp({
     uri: url,
@@ -187,8 +235,18 @@ const getLists = (wekanInfo, token, boardId) => {
 }
 
 
-const registerCard = (wekanInfo, token, boardId, listId, author, title) => {
-  const loginUrl = `${WEKAN_ROOT_URL}/api/boards/${boardId}/lists/${listId}/cards`
+/**
+ * カードを登録する.
+ *
+ * @param {Object} param
+ * @param {string} param.token wekanのトークン
+ * @param {string} param.boardId ボードID
+ * @param {string} param.listId リストID
+ * @param {string} param.authorId カードを登録する人のID
+ * @param {string} param.title カードタイトル
+ */
+function registerCard({token, boardId, listId, authorId, title}) {
+  const loginUrl = `${WEKAN.rootUrl}/api/boards/${boardId}/lists/${listId}/cards`;
 
   const options = {
     uri: loginUrl,
@@ -197,20 +255,17 @@ const registerCard = (wekanInfo, token, boardId, listId, author, title) => {
       Authorization: `Bearer ${token}`,
       'Content-Type' : 'application/json'
     },
-    body: {
-      title: title,
-      authorId: author,
-    },
+    body: { title, authorId },
     json: true
   };
 
   return rp(options);
-};
+}
 
 
 
 const createCardComment = (wekanInfo, token, boardId, listId, cardId, authorId, comment) => {
-  const loginUrl = `${WEKAN_ROOT_URL}/api/boards/${boardId}/cards/${cardId}/comments`
+  const loginUrl = `${WEKAN.rootUrl}/api/boards/${boardId}/cards/${cardId}/comments`;
 
   const options = {
     uri: loginUrl,
@@ -223,58 +278,52 @@ const createCardComment = (wekanInfo, token, boardId, listId, cardId, authorId, 
     json: true
   };
 
-  console.log(options);
+  logger.debug(options);
   return rp(options);
 };
 
 /**
- * 指定された引数をもとにレビュー用チケットを新規作成する
+ * Wekanでレビュー依頼チケットを作成する.
  *
+ * @param {Object} param
+ * @param {string} param.repositoryFullName
+ * @param {tring} param.reviewerNickName
+ * @param {tring} param.revieweeNickName
+ * @param {tring} param.pullRequestTitle
+ * @param {tring} param.botComment
  */
-const createCard = (
+function createCard({
   repositoryFullName,
-  repositoryLink,
   reviewerNickName,
   revieweeNickName,
-  pullRequestNumber,
-  pullRequestLink,
   pullRequestTitle,
-  comment,
-  botComment) => {
+  botComment}) {
+
   const wekanInfo = WEKAN_INFO[repositoryFullName];
   const boardName = wekanInfo.boardName;
 
+  loginToWekanAndGetToken(wekanInfo.admin.id, wekanInfo.admin.pass)
+  .then(({id: userId, token}) => {
 
-  // ログインしてトークン保持
-  loginToWekanAndGetToken(wekanInfo).then(({id, token}) => {
-    console.log(`ログイン成功　token= ${token}`);
+    getUsers(token)
+    .then(users => {
 
-    getUsers(wekanInfo, token).then(users => {
-      console.log(`ユーザ`);
-      console.log(users);
-
-
-      getBoards(wekanInfo, id, token)
+      getBoards(token, userId)
       .then(boards => {
-        console.log(boards);
+
         if (boards.length === 0
           || boards.filter(b => b.title === boardName).length === 0) {
-          console.log(`ボード[${boardName}]が存在しません。`);
+          logger.error(`ボード[${boardName}]が存在しません。`);
           return;
         }
 
         const boardId = boards.filter(b => b.title === boardName)[0]._id;
 
-        getLists(wekanInfo, token, boardId)
+        getLists(token, boardId)
         .then(lists => {
 
           // レビューする人
-          const {
-            wekanListName: listTitle,
-            wekanUserName: reviewerName,
-          } = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0];
-          const reviewerId = users.filter(u => u.username === reviewerName)[0]._id;
-
+          const listTitle = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0].wekanListName;
 
           // レビュー依頼した人
           const revieweeName = wekanInfo.member.filter(m => m.gitbucketNickName === revieweeNickName)[0].wekanUserName;
@@ -283,83 +332,79 @@ const createCard = (
 
           if (lists.length === 0
             || lists.filter(b => b.title === listTitle).length === 0) {
-            console.log(`ボード[${boardName}]にリスト[${listTitle}]が存在しません。`);
+            logger.error(`ボード[${boardName}]にリスト[${listTitle}]が存在しません。`);
             return;
           }
 
           const listId = lists.filter(b => b.title === listTitle)[0]._id;
 
 
-          registerCard(wekanInfo, token, boardId, listId, revieweeId, `レビュー:\`${pullRequestTitle}\``)
-          .then(res => {
-            console.log('処理成功');
+          registerCard({
+            token,
+            boardId,
+            listId,
+            authorId: revieweeId,
+            title: `レビュー:\`${pullRequestTitle}\``
+          })
+          .then(({_id: cardId}) => {
 
-            const cardId = res._id;
             createCardComment(wekanInfo, token, boardId, listId, cardId, revieweeId, botComment)
-            .then(res => {
-              console.log('コメント登録成功');
+            .then(() => {
+              logger.debug('コメント登録成功');
             })
             .catch(err => {
-              console.log('コメント登録失敗');
-              console.log(err);
-            })
+              logger.error('コメント登録失敗');
+              logger.error(err);
+            });
           })
           .catch(err => {
-            console.log('処理失敗')
-            console.log(err);
-          })
-        })
+            logger.error('カード登録失敗');
+            logger.error(err);
+          });
+        });
 
       })
       .catch(err => {
-        console.log(err);
+        logger.error('カード取得失敗');
+        logger.error(err);
       });
-
-    })
+    });
 
 
 
   })
   .catch(err => {
-    console.log(`ログイン失敗 err=${err}`);
-  })
-
-  // ボード見つけて boardId保持
-  // リスト見つけて
-  // リストからreviewerの名前のリストを見つけて listId保持
-
-  // boardIdとlistIdをもとにチケット登録
-  // タイトル　プルリク名
-  // ラベル　レビュー
-  // コメント レビュアーから　commnet
-
-};
-
+    logger.error(`ログイン失敗`);
+    logger.error(err);
+  });
+}
 
 /**
- * 指定したコメントをボットに呟く
+ * 指定したコメントをBotに呟く.
  *
- * @param {*} robot
- * @param {*} comment
+ * @param {Robot} robot Botオブジェクト.
+ * @param {string} comment コメント文.
  */
-const addCommentToChat = (robot, comment) => {
-  const envelope = {}
-  envelope.user = {}
-  envelope.user.room = envelope.room = roomName;
-  envelope.user.type = 'groupchat'
+function addCommentToChat(robot, comment) {
+  const envelope = {};
+  envelope.user = {};
+  envelope.user.room = envelope.room = BOT_ROOM_NAME;
+  envelope.user.type = 'groupchat';
 
   robot.send(envelope, comment);
 }
 
 
 module.exports = (robot) => {
-  robot.router.post('/hubot/gitbucket/review-status', (req, response) => {
+  robot.router.post('/hubot/gitbucket/manage-review-task', (req, response) => {
+    logger.info('処理開始');
+
     if (!req.body.comment
       || !req.body.comment.body
       || !req.body.issue
       || !req.body.issue.number) {
 
-        console.log('処理対象外コメントです。')
+        logger.info('処理対象外コメントです。');
         response.end('Out of target.');
       return;
     }
@@ -374,26 +419,31 @@ module.exports = (robot) => {
 
     const wekanInfo = WEKAN_INFO[repositoryFullName];
 
-    console.log('req.body.comment.body=' + comment)
     if(REVIEW_REQUEST_COMMENT_PATTERN.test(comment)) {
-      console.log('レビュー依頼のコメントです。')
+      logger.info('処理対象のコメント：レビュー依頼');
 
       const reviewerNickName = comment.match(REVIEW_REQUEST_COMMENT_PATTERN)[1];
       const revieweeNickName = wekanInfo.member.filter(m => m.gitbucketUserName === commenter)[0].gitbucketNickName;
 
-      const envelope = {}
-      envelope.user = {}
-      envelope.user.room = envelope.room = roomName;
-      envelope.user.type = 'groupchat'
+      const botComment = createBotComment({
+        repositoryFullName,
+        repositoryLink,
+        reviewerNickName,
+        revieweeNickName,
+        pullRequestNumber,
+        pullRequestLink,
+        comment
+      });
+      addCommentToChat(robot, botComment);
 
-      const botComment = createBotComment(repositoryFullName, repositoryLink, reviewerNickName, revieweeNickName, pullRequestNumber, pullRequestLink, comment);
-      console.log('botComment = ' + botComment);
-      robot.send(envelope, botComment);
-
-      createCard(repositoryFullName, repositoryLink, reviewerNickName, revieweeNickName, pullRequestNumber, pullRequestLink, pullRequestTitle, comment, botComment);
-      console.log('処理成功');
+      createCard({
+        repositoryFullName,
+        reviewerNickName,
+        revieweeNickName,
+        pullRequestTitle,
+        botComment
+      });
       response.end('OK');
     }
-
   });
 };
