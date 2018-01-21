@@ -292,7 +292,7 @@ const createCardComment = (wekanInfo, token, boardId, listId, cardId, authorId, 
  * @param {tring} param.pullRequestTitle
  * @param {tring} param.botComment
  */
-function createCard({
+async function createCard({
   repositoryFullName,
   reviewerNickName,
   revieweeNickName,
@@ -302,81 +302,58 @@ function createCard({
   const wekanInfo = WEKAN_INFO[repositoryFullName];
   const boardName = wekanInfo.boardName;
 
-  loginToWekanAndGetToken(wekanInfo.admin.id, wekanInfo.admin.pass)
-  .then(({id: userId, token}) => {
+  try {
 
-    getUsers(token)
-    .then(users => {
+    // ログイン
+    const {id: userId, token} = await loginToWekanAndGetToken(wekanInfo.admin.id, wekanInfo.admin.pass);
 
-      getBoards(token, userId)
-      .then(boards => {
+    // ユーザ取得
+    const users = await getUsers(token);
 
-        if (boards.length === 0
-          || boards.filter(b => b.title === boardName).length === 0) {
-          logger.error(`ボード[${boardName}]が存在しません。`);
-          return;
-        }
+    // ボード取得
+    const boards = await getBoards(token, userId);
 
-        const boardId = boards.filter(b => b.title === boardName)[0]._id;
+    // ボードの存在チェック
+    if (boards.length === 0
+      || boards.filter(b => b.title === boardName).length === 0) {
+      logger.error(`ボード[${boardName}]が存在しません。`);
+      return;
+    }
+    const boardId = boards.filter(b => b.title === boardName)[0]._id;
 
-        getLists(token, boardId)
-        .then(lists => {
+    // リスト取得
+    const lists = await getLists(token, boardId);
 
-          // レビューする人
-          const listTitle = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0].wekanListName;
+    // リストの存在チェック
+    const listTitle = wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName)[0].wekanListName;
+    if (lists.length === 0
+      || lists.filter(b => b.title === listTitle).length === 0) {
+      logger.error(`ボード[${boardName}]にリスト[${listTitle}]が存在しません。`);
+      return;
+    }
+    const listId = lists.filter(b => b.title === listTitle)[0]._id;
 
-          // レビュー依頼した人
-          const revieweeName = wekanInfo.member.filter(m => m.gitbucketNickName === revieweeNickName)[0].wekanUserName;
-          const revieweeId = users.filter(u => u.username === revieweeName)[0]._id;
+    // レビュー依頼した人の情報を取得
+    const revieweeName = wekanInfo.member.filter(m => m.gitbucketNickName === revieweeNickName)[0].wekanUserName;
+    const revieweeId = users.filter(u => u.username === revieweeName)[0]._id;
 
-
-          if (lists.length === 0
-            || lists.filter(b => b.title === listTitle).length === 0) {
-            logger.error(`ボード[${boardName}]にリスト[${listTitle}]が存在しません。`);
-            return;
-          }
-
-          const listId = lists.filter(b => b.title === listTitle)[0]._id;
-
-
-          registerCard({
-            token,
-            boardId,
-            listId,
-            authorId: revieweeId,
-            title: `レビュー:\`${pullRequestTitle}\``
-          })
-          .then(({_id: cardId}) => {
-
-            createCardComment(wekanInfo, token, boardId, listId, cardId, revieweeId, botComment)
-            .then(() => {
-              logger.debug('コメント登録成功');
-            })
-            .catch(err => {
-              logger.error('コメント登録失敗');
-              logger.error(err);
-            });
-          })
-          .catch(err => {
-            logger.error('カード登録失敗');
-            logger.error(err);
-          });
-        });
-
-      })
-      .catch(err => {
-        logger.error('カード取得失敗');
-        logger.error(err);
-      });
+    // カード登録
+    const {_id: cardId} = await registerCard({
+      token,
+      boardId,
+      listId,
+      authorId: revieweeId,
+      title: `レビュー:\`${pullRequestTitle}\``
     });
 
+    // カードにコメント追加
+    await createCardComment(wekanInfo, token, boardId, listId, cardId, revieweeId, botComment)
+    logger.debug('コメント登録成功');
 
-
-  })
-  .catch(err => {
-    logger.error(`ログイン失敗`);
+  } catch (err) {
+    logger.error('コメント登録失敗');
     logger.error(err);
-  });
+  }
 }
 
 /**
@@ -404,8 +381,8 @@ module.exports = (robot) => {
       || !req.body.issue
       || !req.body.issue.number) {
 
-        logger.info('処理対象外コメントです。');
-        response.end('Out of target.');
+      logger.info('処理対象外コメントです。');
+      response.end('Out of target.');
       return;
     }
 
@@ -422,7 +399,14 @@ module.exports = (robot) => {
     if(REVIEW_REQUEST_COMMENT_PATTERN.test(comment)) {
       logger.info('処理対象のコメント：レビュー依頼');
 
+      // コメントに正しくレビュアーの通称を指定しているかチェック
       const reviewerNickName = comment.match(REVIEW_REQUEST_COMMENT_PATTERN)[1];
+      if (wekanInfo.member.filter(m => m.gitbucketNickName === reviewerNickName).length === 0) {
+        logger.error('レビュアーの指定(' + reviewerNickName + ')が正しくありません。レビュアーには' + wekanInfo.member.map(m => m.gitbucketNickName) + 'のいずれかを指定してください');
+        response.end('NG');
+        return;
+      }
+
       const revieweeNickName = wekanInfo.member.filter(m => m.gitbucketUserName === commenter)[0].gitbucketNickName;
 
       const botComment = createBotComment({
@@ -444,6 +428,10 @@ module.exports = (robot) => {
         botComment
       });
       response.end('OK');
+    } else {
+      logger.info('処理対象外コメントです。');
+      response.end('Out of target.');
+      return;
     }
   });
 };
