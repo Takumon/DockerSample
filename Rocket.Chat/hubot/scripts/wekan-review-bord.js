@@ -110,25 +110,6 @@ const REVIEW_COMPLETION_COMMENT_PATTERN = /^(.+)さんレビュー完了です/;
 
 
 /**
- * 指定したプルリクのブランチを取得する
- *
- * @param {string} owner リポジトリの所有者または所有グループ
- * @param {string} repository リポジトリ名
- * @param {string} pullRequestNumber プルリク番号
- */
-function getPullRequestBranch(owner, repository, pullRequestNumber) {
-  const url = `${GITBUCKET.rootUrl}/api/v3/repos/${owner}/${repository}/pulls/${pullRequestNumber}`;
-
-  return rp({
-    method: 'GET',
-    uri: url,
-    json: true
-  })
-  .then( res => res.head.ref);
-}
-
-
-/**
  * 指定された引数をもとにレビュー依頼文を作成する
  *
  * @param {Object} param
@@ -162,6 +143,7 @@ function createReviewRequestComment({
   return formatted.join('\n');
 }
 
+
 /**
  * 指定された引数をもとにレビュー修正依頼文を作成する
  *
@@ -193,6 +175,7 @@ function createRevisionRequestComment({
 
   return formatted.join('\n');
 }
+
 
 /**
  * 指定された引数をもとにレビュー完了文を作成する
@@ -245,6 +228,7 @@ function loginToWekanAndGetToken(username, password) {
   });
 }
 
+
 /**
  * wekanのユーザ一覧を取得する.
  *
@@ -262,6 +246,7 @@ function getUsers(token) {
     json: true
   });
 }
+
 
 /**
  * 指定したユーザに紐づくボードを取得する.
@@ -282,6 +267,7 @@ function getBoards(token, userId) {
   });
 }
 
+
 /**
  * 指定したボードに紐づくリストを取得する.
  *
@@ -300,6 +286,7 @@ function getLists(token, boardId) {
     json: true
   });
 }
+
 
 /**
  * 指定したボードとリストに紐づくカードを取得する.
@@ -378,13 +365,22 @@ function updateCard({token, boardId, listId, cardId}, updated) {
 }
 
 
-
-const createCardComment = ({
+/**
+ * カードにコメントを追加する.
+ *
+ * @param {object} param
+ * @param {string} param.token wekanのトークン
+ * @param {string} param.boardId ボードID
+ * @param {string} param.cardId カードID
+ * @param {string} param.authorId コメント起票者のID
+ * @param {string} param.comment コメント本文
+ */
+function createCardComment({
   token,
   boardId,
   cardId,
   authorId,
-  comment}) => {
+  comment}) {
   const loginUrl = `${WEKAN.rootUrl}/api/boards/${boardId}/cards/${cardId}/comments`;
 
   const options = {
@@ -400,17 +396,18 @@ const createCardComment = ({
 
   logger.debug(options);
   return rp(options);
-};
+}
+
 
 /**
  * Wekanでレビュー依頼チケットを作成する.
  *
  * @param {Object} param
  * @param {string} param.repositoryFullName 所有者または所有グループも含めたリポジトリ名
- * @param {tring} param.reviewerNickName レビュアーの通称
- * @param {tring} param.revieweeNickName レビュイーの通称
- * @param {tring} param.pullRequestTitle プルリクエストのタイトル
- * @param {tring} param.botComment Botで呟く用のコメント
+ * @param {string} param.reviewerNickName レビュアーの通称
+ * @param {string} param.revieweeNickName レビュイーの通称
+ * @param {string} param.pullRequestTitle プルリクエストのタイトル
+ * @param {string} param.botComment Botで呟く用のコメント
  */
 async function createCard({
   repositoryFullName,
@@ -483,16 +480,15 @@ async function createCard({
 }
 
 
-
 /**
  * Wekanで（レビュー修正依頼）レビュイーにチケットを返す.
  *
  * @param {Object} param
  * @param {string} param.repositoryFullName 所有者または所有グループも含めたリポジトリ名
- * @param {tring} param.reviewerNickName レビュアーの通称
- * @param {tring} param.revieweeNickName レビュイーの通称
- * @param {tring} param.pullRequestTitle プルリクエストのタイトル
- * @param {tring} param.botComment Botで呟く用のコメント
+ * @param {string} param.reviewerNickName レビュアーの通称
+ * @param {string} param.revieweeNickName レビュイーの通称
+ * @param {string} param.pullRequestTitle プルリクエストのタイトル
+ * @param {string} param.botComment Botで呟く用のコメント
  */
 async function returnCardToReviewee({
   repositoryFullName,
@@ -589,16 +585,15 @@ async function returnCardToReviewee({
 }
 
 
-
 /**
  * Wekanで（再レビュー依頼）レビュアーにチケットを返す.
  *
  * @param {Object} param
  * @param {string} param.repositoryFullName 所有者または所有グループも含めたリポジトリ名
- * @param {tring} param.reviewerNickName レビュアーの通称
- * @param {tring} param.revieweeNickName レビュイーの通称
- * @param {tring} param.pullRequestTitle プルリクエストのタイトル
- * @param {tring} param.botComment Botで呟く用のコメント
+ * @param {string} param.reviewerNickName レビュアーの通称
+ * @param {string} param.revieweeNickName レビュイーの通称
+ * @param {string} param.pullRequestTitle プルリクエストのタイトル
+ * @param {string} param.botComment Botで呟く用のコメント
  */
 async function returnCardToReviewer({
   repositoryFullName,
@@ -696,16 +691,14 @@ async function returnCardToReviewer({
 }
 
 
-
-
 /**
  * Wekanで（レビュー完了）チケットをCloseリストに移動.
  *
  * @param {Object} param
  * @param {string} param.repositoryFullName 所有者または所有グループも含めたリポジトリ名
- * @param {tring} param.reviewerNickName レビュアーの通称
- * @param {tring} param.pullRequestTitle プルリクエストのタイトル
- * @param {tring} param.botComment Botで呟く用のコメント
+ * @param {string} param.reviewerNickName レビュアーの通称
+ * @param {string} param.pullRequestTitle プルリクエストのタイトル
+ * @param {string} param.botComment Botで呟く用のコメント
  */
 async function moveCardToClose({
   repositoryFullName,
